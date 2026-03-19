@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Dashboard — IKEWs Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">IKEWs Scheduler</a>
+    <div class="nav-user" id="navUser"></div>
+  </header>
+
+  <main id="app">
+    <div class="loading-wrap"><div class="spinner"></div></div>
+  </main>
+
+  <script src="/js/config.js"></script>
+  <script type="module">
+    import { auth, db, requireAuth, renderNavUser } from "/js/auth.js";
+    import {
+      collection, query, where, getDocs, addDoc,
+      doc, getDoc, serverTimestamp, Timestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    requireAuth(async (user) => {
+      renderNavUser(user);
+      await loadDashboard(user);
+    });
+
+    async function loadDashboard(user) {
+      const app = document.getElementById("app");
+      const window_ = getCurrentWindow();
+
+      // Fetch student record
+      const studentSnap = await getDoc(doc(db, "students", user.email));
+      if (!studentSnap.exists()) {
+        app.innerHTML = `
+          <div class="alert alert-error">
+            Your account is not on the eligible student list. Please contact your administrator.
+          </div>`;
+        return;
+      }
+      const student = studentSnap.data();
+
+      // Fetch existing slot submissions
+      const slotsSnap = await getDocs(
+        query(collection(db, "interviewSlots"),
+              where("studentEmail", "==", user.email))
+      );
+      const existingSlots = slotsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pendingSlots   = existingSlots.filter(s => s.status === "pending");
+      const lockedSlot     = existingSlots.find(s => s.status === "locked");
+      const discardedSlots = existingSlots.filter(s => s.status === "discarded");
+
+      // ---- MATCHED: show confirmation ----
+      if (student.status === "matched" && lockedSlot) {
+        app.innerHTML = renderMatched(student, lockedSlot);
+        return;
+      }
+
+      // ---- NEEDS NEW TIMES (Day 7 reconciliation) ----
+      if (student.status === "needs_new_times") {
+        app.innerHTML = renderNeedsNewTimes(user, existingSlots);
+        attachSlotPickerEvents(user, true);
+        return;
+      }
+
+      // ---- OUTSIDE STUDENT WINDOW ----
+      if (window_ !== "student" && student.status === "pending" && pendingSlots.length === 0) {
+        app.innerHTML = `
+          <h1 class="page-title">Interview Scheduler</h1>
+          <div class="alert alert-warning">
+            The student sign-up window is not currently open.
+            Please check back during Days 1–3 of the scheduling week
+            (${formatDate(getWindowDates().studentWindowStart)} – ${formatDate(new Date(getWindowDates().studentWindowEnd.getTime() - 1))}).
+          </div>`;
+        return;
+      }
+
+      // ---- ALREADY SUBMITTED: show summary ----
+      if (pendingSlots.length > 0) {
+        app.innerHTML = renderSubmitted(student, pendingSlots, discardedSlots);
+        return;
+      }
+
+      // ---- SLOT SELECTION ----
+      app.innerHTML = renderSlotPicker(user, existingSlots);
+      attachSlotPickerEvents(user, false);
+    }
+
+    // ================================================================
+    //  RENDER FUNCTIONS
+    // ================================================================
+
+    function renderMatched(student, slot) {
+      const start = slot.startTime.toDate ? slot.startTime.toDate() : new Date(slot.startTime);
+      const end   = slot.endTime.toDate   ? slot.endTime.toDate()   : new Date(slot.endTime);
+      return `
+        <h1 class="page-title">Your Interview is Confirmed!</h1>
+        <p class="page-subtitle">Congratulations, ${student.name}. Your IKEW interview has been scheduled.</p>
+        <div class="card">
+          <div class="card-title">Interview Details</div>
+          <p><strong>Date & Time:</strong> ${formatDateTime(start)} – ${formatTime(end)}</p>
+          <p style="margin-top:12px">
+            <strong>Google Meet Link:</strong>
+            ${slot.googleMeetLink
+              ? `<a href="${slot.googleMeetLink}" target="_blank" class="btn btn-primary btn-sm" style="margin-left:8px">Join Meeting</a>`
+              : '<span style="color:var(--gray-500);margin-left:8px">Will appear in your calendar invite</span>'}
+          </p>
+          <div class="alert alert-info" style="margin-top:16px">
+            A calendar invitation has been sent to <strong>${student.email}</strong> with the Meet link and details.
+          </div>
+        </div>`;
+    }
+
+    function renderSubmitted(student, pendingSlots, discardedSlots) {
+      const rows = pendingSlots.map(s => {
+        const start = s.startTime.toDate ? s.startTime.toDate() : new Date(s.startTime);
+        const end   = s.endTime.toDate   ? s.endTime.toDate()   : new Date(s.endTime);
+        return `<li style="padding:6px 0;border-bottom:1px solid var(--gray-200)">
+          <span class="badge badge-pending">Pending</span>
+          &nbsp;${formatDateTime(start)} – ${formatTime(end)}
+        </li>`;
+      }).join("");
+
+      return `
+        <h1 class="page-title">Your Time Preferences</h1>
+        <p class="page-subtitle">Hi ${student.name}, we've received your preferred interview times.</p>
+        <div class="card">
+          <div class="card-title">Your Selected Slots (${pendingSlots.length} of ${SCHEDULE_CONFIG.requiredSelections})</div>
+          <ul style="list-style:none;padding:0">${rows}</ul>
+          <div class="alert alert-info" style="margin-top:16px">
+            Faculty will sign up for your preferred times during Days 4–6. You'll receive a Google Calendar
+            invitation once two faculty members confirm a slot.
+          </div>
+        </div>`;
+    }
+
+    function renderSlotPicker(user, existingSlots) {
+      const slots = generateStudentSlots();
+
+      // Group by day
+      const groups = {};
+      slots.forEach(slot => {
+        const dayKey = slot.startTime.toDateString();
+        if (!groups[dayKey]) groups[dayKey] = [];
+        groups[dayKey].push(slot);
+      });
+
+      const dayHtml = Object.entries(groups).map(([dayKey, daySlots]) => {
+        const dayLabel = new Date(dayKey).toLocaleDateString("en-US", {
+          weekday: "long", month: "long", day: "numeric"
+        });
+        const slotBtns = daySlots.map((s, i) => {
+          const id = `slot-${dayKey.replace(/\s/g, '')}-${i}`;
+          const startIso = s.startTime.toISOString();
+          const endIso   = s.endTime.toISOString();
+          return `<button
+            class="slot-btn"
+            data-start="${startIso}"
+            data-end="${endIso}"
+            data-label="${s.label}"
+            id="${id}"
+          >${s.startTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}
+           – ${s.endTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true})}</button>`;
+        }).join("");
+        return `
+          <div class="slot-day-group">
+            <div class="slot-day-label">${dayLabel}</div>
+            <div class="slot-list">${slotBtns}</div>
+          </div>`;
+      }).join("");
+
+      return `
+        <h1 class="page-title">Select Your Preferred Interview Times</h1>
+        <p class="page-subtitle">Choose exactly ${SCHEDULE_CONFIG.requiredSelections} time slots. Faculty will sign up for one of your chosen times.</p>
+        <div class="card">
+          <div id="selectionCount" class="alert alert-info" style="margin-bottom:16px">
+            0 of ${SCHEDULE_CONFIG.requiredSelections} slots selected
+          </div>
+          ${dayHtml}
+          <div style="margin-top:20px;display:flex;gap:12px;align-items:center">
+            <button class="btn btn-primary" id="submitBtn" disabled>Submit Preferences</button>
+            <span id="submitStatus" style="font-size:13px;color:var(--gray-500)"></span>
+          </div>
+        </div>`;
+    }
+
+    function renderNeedsNewTimes(user, existingSlots) {
+      return `
+        <h1 class="page-title">Please Select New Times</h1>
+        <p class="page-subtitle">
+          We weren't able to match you with two faculty members for your previous selections.
+          Please choose ${SCHEDULE_CONFIG.requiredSelections} new preferred time slots based on remaining faculty availability.
+        </p>
+        <div class="alert alert-warning">
+          Your previous selections have been cleared. Please choose new times below.
+        </div>
+        ${renderSlotPicker(user, []).replace(/<h1[^>]*>.*?<\/h1>/, '').replace(/<p[^>]*>.*?<\/p>/, '')}`;
+    }
+
+    // ================================================================
+    //  SLOT PICKER EVENTS
+    // ================================================================
+
+    function attachSlotPickerEvents(user, isReschedule) {
+      const selected = new Set();
+      const max = SCHEDULE_CONFIG.requiredSelections;
+
+      document.querySelectorAll(".slot-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const key = btn.dataset.start;
+          if (selected.has(key)) {
+            selected.delete(key);
+            btn.classList.remove("selected");
+          } else if (selected.size < max) {
+            selected.add(key);
+            btn.classList.add("selected");
+          }
+          updateCount();
+        });
+      });
+
+      function updateCount() {
+        const countEl = document.getElementById("selectionCount");
+        const submitBtn = document.getElementById("submitBtn");
+        const n = selected.size;
+        countEl.textContent = `${n} of ${max} slots selected`;
+        countEl.className = `alert ${n === max ? "alert-success" : "alert-info"}`;
+        submitBtn.disabled = n !== max;
+      }
+
+      document.getElementById("submitBtn").addEventListener("click", async () => {
+        const submitBtn   = document.getElementById("submitBtn");
+        const submitStatus = document.getElementById("submitStatus");
+        submitBtn.disabled = true;
+        submitStatus.textContent = "Saving…";
+
+        try {
+          const writes = [];
+          document.querySelectorAll(".slot-btn.selected").forEach(btn => {
+            writes.push(addDoc(collection(db, "interviewSlots"), {
+              studentEmail: user.email,
+              startTime: Timestamp.fromDate(new Date(btn.dataset.start)),
+              endTime:   Timestamp.fromDate(new Date(btn.dataset.end)),
+              status: "pending",
+              googleMeetLink: "",
+              createdAt: serverTimestamp()
+            }));
+          });
+          await Promise.all(writes);
+          // Reload
+          await loadDashboard(user);
+        } catch (err) {
+          console.error("Error saving slots:", err);
+          submitStatus.textContent = "Error saving. Please try again.";
+          submitBtn.disabled = false;
+        }
+      });
+    }
+
+    // ================================================================
+    //  UTILS
+    // ================================================================
+
+    function formatDateTime(d) {
+      return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })
+        + " at " + d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
+    }
+    function formatTime(d) {
+      return d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
+    }
+    function formatDate(d) {
+      return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+    }
+  </script>
+</body>
+</html>

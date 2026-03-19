@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faculty Dashboard — IKEWs Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .slot-row-locked td { opacity: 0.5; }
+    .signup-count {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .already-signed {
+      color: var(--green-600);
+      font-size: 13px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">IKEWs Scheduler</a>
+    <div class="nav-user" id="navUser"></div>
+  </header>
+
+  <main id="app">
+    <div class="loading-wrap"><div class="spinner"></div></div>
+  </main>
+
+  <script src="/js/config.js"></script>
+  <script type="module">
+    import { auth, db, requireAuth, renderNavUser } from "/js/auth.js";
+    import {
+      collection, query, where, getDocs, addDoc,
+      doc, getDoc, serverTimestamp, orderBy
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    requireAuth(async (user) => {
+      renderNavUser(user);
+      await loadDashboard(user);
+    });
+
+    async function loadDashboard(user) {
+      const app = document.getElementById("app");
+
+      // Verify faculty record exists
+      const facultySnap = await getDoc(doc(db, "faculty", user.email));
+      if (!facultySnap.exists()) {
+        app.innerHTML = `<div class="alert alert-error">Your account is not on the faculty list. Please contact your administrator.</div>`;
+        return;
+      }
+      const faculty = facultySnap.data();
+
+      // Check window
+      const window_ = getCurrentWindow();
+      if (window_ !== "faculty" && window_ !== "reconciliation") {
+        const { facultyWindowStart, facultyWindowEnd } = getWindowDates();
+        app.innerHTML = `
+          <h1 class="page-title">Faculty Signup</h1>
+          <div class="alert alert-warning">
+            The faculty sign-up window is not currently open.<br>
+            Please return during Days 4–6 (${formatDate(facultyWindowStart)} – ${formatDate(new Date(facultyWindowEnd.getTime() - 1))}).
+          </div>`;
+        return;
+      }
+
+      // Fetch all pending slots
+      const slotsSnap = await getDocs(
+        query(
+          collection(db, "interviewSlots"),
+          where("status", "==", "pending"),
+          orderBy("startTime", "asc")
+        )
+      );
+
+      // Fetch all signups (to show counts + detect if this faculty already signed up)
+      const signupsSnap = await getDocs(collection(db, "facultySignups"));
+      const allSignups  = signupsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Build a map: slotId -> list of facultyEmails who signed up
+      const signupsBySlot = {};
+      allSignups.forEach(su => {
+        if (!signupsBySlot[su.slotId]) signupsBySlot[su.slotId] = [];
+        signupsBySlot[su.slotId].push(su.facultyEmail);
+      });
+
+      // Fetch student names for display
+      const studentEmails = [...new Set(slotsSnap.docs.map(d => d.data().studentEmail))];
+      const studentNames  = {};
+      await Promise.all(studentEmails.map(async email => {
+        const snap = await getDoc(doc(db, "students", email));
+        studentNames[email] = snap.exists() ? snap.data().name : email;
+      }));
+
+      if (slotsSnap.empty) {
+        app.innerHTML = `
+          <h1 class="page-title">Faculty Signup</h1>
+          <p class="page-subtitle">Welcome, ${faculty.name}.</p>
+          <div class="alert alert-success">
+            All student slots have been matched! No more action needed.
+          </div>`;
+        return;
+      }
+
+      const rows = slotsSnap.docs.map(d => {
+        const slot      = d.data();
+        const slotId    = d.id;
+        const start     = slot.startTime.toDate ? slot.startTime.toDate() : new Date(slot.startTime);
+        const end       = slot.endTime.toDate   ? slot.endTime.toDate()   : new Date(slot.endTime);
+        const signups   = signupsBySlot[slotId] || [];
+        const count     = signups.length;
+        const iSigned   = signups.includes(user.email);
+        const isFull    = count >= SCHEDULE_CONFIG.requiredFaculty;
+        const studentName = studentNames[slot.studentEmail] || slot.studentEmail;
+
+        // pip indicators: filled = signed, empty = open
+        const pips = Array.from({length: SCHEDULE_CONFIG.requiredFaculty}, (_, i) =>
+          `<span class="pip ${i < count ? 'filled' : ''}"></span>`
+        ).join("");
+
+        const actionCell = iSigned
+          ? `<span class="already-signed">✓ Signed up</span>`
+          : isFull
+          ? `<span style="color:var(--gray-500);font-size:13px">Full</span>`
+          : `<button class="btn btn-success btn-sm signup-btn"
+               data-slot-id="${slotId}"
+               data-student="${slot.studentEmail}">Sign up</button>`;
+
+        return `<tr id="row-${slotId}">
+          <td>${formatDateTime(start)}</td>
+          <td>${formatTime(end)}</td>
+          <td>${studentName}</td>
+          <td><div class="signup-count">${pips} <span style="font-size:12px;color:var(--gray-500)">${count}/${SCHEDULE_CONFIG.requiredFaculty}</span></div></td>
+          <td>${actionCell}</td>
+        </tr>`;
+      }).join("");
+
+      app.innerHTML = `
+        <h1 class="page-title">Open Interview Slots</h1>
+        <p class="page-subtitle">Welcome, ${faculty.name}. Sign up for student interview slots below. The meeting will be automatically created when two faculty sign up for the same slot.</p>
+        <div class="card">
+          <table class="slot-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>End Time</th>
+                <th>Student</th>
+                <th>Faculty Signed Up</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="slotsBody">${rows}</tbody>
+          </table>
+        </div>
+        <div id="statusMsg"></div>`;
+
+      attachSignupEvents(user, signupsBySlot, studentNames);
+    }
+
+    function attachSignupEvents(user, signupsBySlot, studentNames) {
+      document.querySelectorAll(".signup-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const slotId = btn.dataset.slotId;
+          btn.disabled = true;
+          btn.textContent = "Signing up…";
+
+          try {
+            await addDoc(collection(db, "facultySignups"), {
+              slotId:       slotId,
+              facultyEmail: user.email,
+              createdAt:    serverTimestamp()
+            });
+
+            // Update UI immediately (Cloud Function handles finalization)
+            const row = document.getElementById(`row-${slotId}`);
+            if (row) {
+              const actionCell = row.querySelector("td:last-child");
+              actionCell.innerHTML = `<span class="already-signed">✓ Signed up</span>`;
+
+              // Update pip count (optimistic)
+              const current = (signupsBySlot[slotId] || []).length + 1;
+              const pipsCell = row.querySelector(".signup-count");
+              if (pipsCell) {
+                const pips = Array.from({length: SCHEDULE_CONFIG.requiredFaculty}, (_, i) =>
+                  `<span class="pip ${i < current ? 'filled' : ''}"></span>`
+                ).join("");
+                pipsCell.innerHTML = `${pips} <span style="font-size:12px;color:var(--gray-500)">${current}/${SCHEDULE_CONFIG.requiredFaculty}</span>`;
+              }
+            }
+
+            showStatus("You've successfully signed up for this slot!", "success");
+          } catch (err) {
+            console.error("Signup error:", err);
+            btn.disabled = false;
+            btn.textContent = "Sign up";
+            showStatus("Error signing up. Please try again.", "error");
+          }
+        });
+      });
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById("statusMsg");
+      if (!el) return;
+      el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+      setTimeout(() => { el.innerHTML = ""; }, 5000);
+    }
+
+    function formatDateTime(d) {
+      return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })
+        + " " + d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
+    }
+    function formatTime(d) {
+      return d.toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit", hour12:true });
+    }
+    function formatDate(d) {
+      return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" });
+    }
+  </script>
+</body>
+</html>

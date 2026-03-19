@@ -1,0 +1,384 @@
+/* ============================================================
+   IKEWs Scheduler — Shared Stylesheet
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --blue-600:   #1a73e8;
+  --blue-700:   #1558b0;
+  --blue-50:    #e8f0fe;
+  --green-600:  #1e8e3e;
+  --green-50:   #e6f4ea;
+  --amber-600:  #f29900;
+  --amber-50:   #fef7e0;
+  --red-600:    #d93025;
+  --red-50:     #fce8e6;
+  --gray-900:   #202124;
+  --gray-700:   #3c4043;
+  --gray-500:   #80868b;
+  --gray-200:   #e8eaed;
+  --gray-100:   #f1f3f4;
+  --white:      #ffffff;
+
+  --font: "Google Sans", Roboto, Arial, sans-serif;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.15);
+}
+
+body {
+  font-family: var(--font);
+  color: var(--gray-900);
+  background: var(--gray-100);
+  min-height: 100vh;
+}
+
+/* ---- NAV ---- */
+header {
+  background: var(--white);
+  border-bottom: 1px solid var(--gray-200);
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--blue-600);
+  text-decoration: none;
+}
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--gray-700);
+}
+
+.nav-user img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+/* ---- MAIN LAYOUT ---- */
+main {
+  max-width: 900px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--gray-500);
+  margin-bottom: 24px;
+}
+
+/* ---- CARDS ---- */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--gray-700);
+}
+
+/* ---- BUTTONS ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, box-shadow 0.15s;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--blue-600);
+  color: var(--white);
+}
+.btn-primary:hover { background: var(--blue-700); }
+.btn-primary:disabled { background: var(--gray-200); color: var(--gray-500); cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--white);
+  color: var(--blue-600);
+  border: 1px solid var(--blue-600);
+}
+.btn-secondary:hover { background: var(--blue-50); }
+
+.btn-success {
+  background: var(--green-600);
+  color: var(--white);
+}
+.btn-success:hover { background: #157532; }
+.btn-success:disabled { background: var(--gray-200); color: var(--gray-500); cursor: not-allowed; }
+
+.btn-danger {
+  background: var(--red-600);
+  color: var(--white);
+}
+
+.btn-sm {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+/* ---- GOOGLE SIGN-IN ---- */
+.signin-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.signin-card {
+  background: var(--white);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  padding: 48px 40px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+
+.signin-card h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--gray-900);
+}
+
+.signin-card p {
+  font-size: 14px;
+  color: var(--gray-500);
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: box-shadow 0.15s, background 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,.1);
+}
+.btn-google:hover { box-shadow: var(--shadow); background: var(--gray-100); }
+
+.btn-google svg { width: 20px; height: 20px; }
+
+/* ---- STATUS BADGES ---- */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-pending  { background: var(--amber-50); color: #7a4f00; }
+.badge-locked   { background: var(--green-50); color: #145523; }
+.badge-matched  { background: var(--green-50); color: #145523; }
+.badge-discarded{ background: var(--gray-100); color: var(--gray-500); text-decoration: line-through; }
+.badge-needs-new{ background: var(--red-50); color: #8c1a10; }
+
+/* ---- SLOT GRID ---- */
+.slot-day-group {
+  margin-bottom: 20px;
+}
+
+.slot-day-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 8px;
+}
+
+.slot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.slot-btn {
+  padding: 8px 14px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 6px;
+  background: var(--white);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.slot-btn:hover:not(:disabled) {
+  border-color: var(--blue-600);
+  background: var(--blue-50);
+}
+
+.slot-btn.selected {
+  border-color: var(--blue-600);
+  background: var(--blue-50);
+  color: var(--blue-600);
+  font-weight: 600;
+}
+
+.slot-btn:disabled {
+  background: var(--gray-100);
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+
+/* ---- SLOT TABLE (Faculty View) ---- */
+.slot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.slot-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.slot-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--gray-200);
+  vertical-align: middle;
+}
+
+.slot-table tr:last-child td { border-bottom: none; }
+
+.slot-table tr:hover td { background: var(--gray-100); }
+
+/* ---- FACULTY COUNT ---- */
+.faculty-pips {
+  display: flex;
+  gap: 4px;
+}
+
+.pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gray-200);
+}
+
+.pip.filled { background: var(--blue-600); }
+
+/* ---- ALERT BANNERS ---- */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alert-info    { background: var(--blue-50); color: #174ea6; border: 1px solid #c5d9f9; }
+.alert-success { background: var(--green-50); color: #145523; border: 1px solid #b3dfc0; }
+.alert-warning { background: var(--amber-50); color: #7a4f00; border: 1px solid #fde69a; }
+.alert-error   { background: var(--red-50); color: #8c1a10; border: 1px solid #f5bab6; }
+
+/* ---- LOADING SPINNER ---- */
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--blue-600);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  margin: 40px auto;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-wrap { text-align: center; padding: 40px 0; }
+
+/* ---- STATS GRID (Admin) ---- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--blue-600);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin-top: 4px;
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 600px) {
+  .signin-card { padding: 32px 20px; }
+  main { margin: 16px auto; }
+  .slot-table { font-size: 13px; }
+  .slot-table th, .slot-table td { padding: 8px; }
+}
